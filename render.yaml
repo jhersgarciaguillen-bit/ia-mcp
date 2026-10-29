@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: ia-mcp-relay
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: IA_MCP_AGENT_TOKEN
+        sync: false
+      - key: IA_MCP_RELAY_CLIENT_TOKEN
+        sync: false

@@ -1,0 +1,877 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Interfaz web con modelos locales y herramientas MCP.">
+    <title>IA_MCP · Ingeniería asistida</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: system-ui, Segoe UI, sans-serif;
+        background: #10151d;
+        color: #eef3f8;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; }
+      button, textarea, select { font: inherit; }
+      .topbar {
+        align-items: flex-end;
+        border-bottom: 1px solid #223041;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        justify-content: space-between;
+        margin: 0 auto;
+        max-width: 1120px;
+        padding: 32px 24px 20px;
+      }
+      .eyebrow { color: #7fd8ff; font-family: ui-monospace, monospace; font-size: .75rem; letter-spacing: .18em; }
+      h1 { font-size: clamp(1.8rem, 4vw, 2.6rem); margin: 4px 0 0; }
+      h2 { font-size: 1rem; margin: 0 0 12px; }
+      p { color: #b7c4d2; line-height: 1.6; margin: 0; }
+      .status { font-family: ui-monospace, monospace; font-size: .82rem; text-align: right; }
+      .layout {
+        display: grid;
+        gap: 20px;
+        grid-template-columns: minmax(0, 1fr) 340px;
+        margin: 0 auto;
+        max-width: 1120px;
+        padding: 24px;
+      }
+      .card { background: #192330; border: 1px solid #2b3a4b; border-radius: 16px; padding: 20px; }
+      .side { display: grid; gap: 16px; align-content: start; }
+      .chat { display: flex; flex-direction: column; min-height: 70vh; padding: 20px 20px 16px; }
+      .chat-head { align-items: center; display: flex; justify-content: space-between; margin-bottom: 8px; }
+      .messages { display: flex; flex: 1; flex-direction: column; gap: 12px; overflow-y: auto; padding: 8px 2px; }
+      .message { border-radius: 14px; max-width: 88%; padding: 12px 14px; white-space: pre-wrap; word-break: break-word; }
+      .message.user { align-self: flex-end; background: #2563a8; color: #f4f9ff; }
+      .message.assistant { align-self: flex-start; background: #223142; border: 1px solid #2f4258; }
+      .message.error { align-self: flex-start; background: #3a1f27; border: 1px solid #7a3345; color: #ffd6df; }
+      .message.pending { align-self: flex-start; color: #93a4b8; font-style: italic; }
+      .empty { color: #8294a8; margin: auto; max-width: 420px; text-align: center; }
+      .composer { display: flex; gap: 10px; margin-top: 12px; }
+      .composer textarea { flex: 1; resize: vertical; }
+      textarea, select, input {
+        background: #0f1721;
+        border: 1px solid #304256;
+        border-radius: 10px;
+        color: #eef3f8;
+        padding: 10px 12px;
+        width: 100%;
+      }
+      textarea:focus, select:focus, input:focus { border-color: #4d8fca; outline: none; }
+      .message-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; white-space: normal; }
+      .message-actions button { font-size: .8rem; padding: 6px 10px; }
+      .message-actions button.danger { background: #9b2c3f; }
+      .message-actions button.danger:hover { background: #b9364d; }
+      .hidden { display: none !important; }
+      .progress { color: #7fd8ff; font-family: ui-monospace, monospace; font-size: .76rem; }
+      button {
+        background: #2d7dd2;
+        border: 0;
+        border-radius: 10px;
+        color: white;
+        cursor: pointer;
+        padding: 10px 16px;
+      }
+      button:hover { background: #3b8ee6; }
+      button:disabled { cursor: wait; opacity: .6; }
+      button.ghost { background: transparent; border: 1px solid #3a4f66; color: #cfe0f0; padding: 7px 12px; }
+      button.ghost:hover { background: #223142; }
+      .row { display: flex; gap: 8px; }
+      .row select { flex: 1; }
+      .label { color: #9fb1c5; display: block; font-size: .78rem; margin: 10px 0 6px; text-transform: uppercase; letter-spacing: .08em; }
+      .hint { color: #7f91a6; font-size: .76rem; margin-top: 8px; }
+      .side .card button { margin-top: 10px; width: 100%; }
+      @media (max-width: 860px) {
+        .layout { grid-template-columns: 1fr; }
+        .chat { min-height: 60vh; }
+        .status { text-align: left; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <span class="eyebrow">IA_MCP · LOCAL</span>
+        <h1>Ingeniería asistida</h1>
+      </div>
+      <p class="status" id="status" role="status">Consultando servicios locales...</p>
+    </header>
+
+    <main class="layout">
+      <section class="card chat" aria-labelledby="chat-title">
+        <div class="chat-head">
+          <h2 id="chat-title">Conversación</h2>
+          <button type="button" id="new-chat" class="ghost">Nueva conversación</button>
+        </div>
+        <div class="messages" id="messages" aria-live="polite">
+          <p class="empty" id="empty">
+            Escribe una instrucción abajo. Puedes cargar el texto de un documento de Word
+            abierto y pedir que lo resuma, analice o revise.
+          </p>
+        </div>
+        <form class="composer" id="chat-form">
+          <label class="label" for="prompt" hidden>Instrucción</label>
+          <textarea id="prompt" rows="2" maxlength="20000" placeholder="Escribe tu instrucción..." required></textarea>
+          <button type="submit" id="send">Enviar</button>
+        </form>
+        <p class="hint">Enter envía · Shift+Enter agrega una línea</p>
+      </section>
+
+      <aside class="side">
+        <section class="card" aria-labelledby="model-title">
+          <h2 id="model-title">Modelo local</h2>
+          <label class="label" for="model">Modelo de Ollama</label>
+          <select id="model"></select>
+          <p class="hint" id="model-note">Cargando modelos...</p>
+          <label class="label" for="model-name">Descargar otro modelo</label>
+          <div class="row">
+            <input id="model-name" maxlength="200" placeholder="ej: llama3.2:3b">
+            <button type="button" id="pull-model" class="ghost">Descargar</button>
+          </div>
+          <p class="hint progress" id="pull-note">Usa el nombre exacto del catálogo de Ollama.</p>
+        </section>
+
+        <section class="card hidden" id="remote-panel" aria-labelledby="remote-title">
+          <h2 id="remote-title">Conexión remota</h2>
+          <p class="hint">El relay conecta esta página con tu PC; el token no se guarda en el navegador.</p>
+          <label class="label" for="relay-url">Relay WebSocket</label>
+          <input id="relay-url" maxlength="500" placeholder="wss://tu-relay/ws/client">
+          <label class="label" for="relay-token">Token de acceso</label>
+          <input id="relay-token" type="password" maxlength="200" autocomplete="off">
+          <button type="button" id="connect-relay">Conectar</button>
+          <p class="hint progress" id="remote-note">Sin conectar.</p>
+        </section>
+
+        <section class="card" aria-labelledby="program-title">
+          <h2 id="program-title">Programa conectado</h2>
+          <label class="label" for="program">Herramientas disponibles</label>
+          <select id="program">
+            <option value="">Ninguno (solo chat)</option>
+            <option value="word">Microsoft Word</option>
+            <option value="civil3d">Civil 3D</option>
+          </select>
+          <p class="hint" id="program-note">Solo chat; sin contexto de programas.</p>
+        </section>
+
+        <section class="card" aria-labelledby="instructions-title">
+          <h2 id="instructions-title">Instrucciones</h2>
+          <label class="label" for="instructions">Comportamiento del asistente</label>
+          <textarea id="instructions" rows="5" maxlength="8000" placeholder="Ejemplo: Responde en español, recomienda mejoras y explica qué falta sin inventar datos."></textarea>
+          <p class="hint">Se guardan solo en este navegador.</p>
+        </section>
+
+        <section class="card hidden" id="word-panel" aria-labelledby="word-title">
+          <h2 id="word-title">Microsoft Word</h2>
+          <label class="label" for="word-doc">Documento abierto</label>
+          <div class="row">
+            <select id="word-doc">
+              <option value="">Documento activo</option>
+            </select>
+            <button type="button" id="refresh-word" class="ghost">Actualizar</button>
+          </div>
+          <button type="button" id="load-word">Cargar texto</button>
+          <label class="label" for="context">Contexto para la conversación</label>
+          <textarea id="context" rows="6" maxlength="200000" placeholder="El texto del documento aparecerá aquí y puedes editarlo."></textarea>
+          <p class="hint" id="word-note">Abre Word con un documento y pulsa Actualizar.</p>
+          <button type="button" id="clear-context" class="ghost">Limpiar contexto</button>
+        </section>
+
+        <section class="card hidden" id="civil3d-panel" aria-labelledby="civil3d-title">
+          <h2 id="civil3d-title">Civil 3D</h2>
+          <p class="hint">Solo lectura en esta etapa. Requiere el puente local de Civil 3D.</p>
+          <button type="button" id="load-civil3d">Cargar alineamientos</button>
+          <p class="hint" id="civil3d-note">Abre Civil 3D y pulsa Cargar alineamientos.</p>
+        </section>
+      </aside>
+    </main>
+
+    <script>
+      const REMOTE_MODE =
+        location.pathname === "/remote" ||
+        new URLSearchParams(location.search).has("remote");
+      const state = {
+        messages: [],
+        models: [],
+        busy: false,
+        program: "",
+        remote: REMOTE_MODE,
+        ws: null,
+        wsOpen: false,
+        agentOnline: false,
+        pending: new Map(),
+        relayCloseReason: null,
+      };
+
+      const els = {
+        status: document.querySelector("#status"),
+        messages: document.querySelector("#messages"),
+        empty: document.querySelector("#empty"),
+        form: document.querySelector("#chat-form"),
+        prompt: document.querySelector("#prompt"),
+        send: document.querySelector("#send"),
+        newChat: document.querySelector("#new-chat"),
+        model: document.querySelector("#model"),
+        modelNote: document.querySelector("#model-note"),
+        modelName: document.querySelector("#model-name"),
+        pullModel: document.querySelector("#pull-model"),
+        pullNote: document.querySelector("#pull-note"),
+        remotePanel: document.querySelector("#remote-panel"),
+        relayUrl: document.querySelector("#relay-url"),
+        relayToken: document.querySelector("#relay-token"),
+        connectRelay: document.querySelector("#connect-relay"),
+        remoteNote: document.querySelector("#remote-note"),
+        program: document.querySelector("#program"),
+        programNote: document.querySelector("#program-note"),
+        instructions: document.querySelector("#instructions"),
+        wordPanel: document.querySelector("#word-panel"),
+        wordDoc: document.querySelector("#word-doc"),
+        refreshWord: document.querySelector("#refresh-word"),
+        loadWord: document.querySelector("#load-word"),
+        wordNote: document.querySelector("#word-note"),
+        context: document.querySelector("#context"),
+        clearContext: document.querySelector("#clear-context"),
+        civil3dPanel: document.querySelector("#civil3d-panel"),
+        loadCivil3d: document.querySelector("#load-civil3d"),
+        civil3dNote: document.querySelector("#civil3d-note"),
+      };
+
+      function stored(key, fallback) {
+        try {
+          const value = localStorage.getItem(key);
+          return value === null ? fallback : value;
+        } catch {
+          return fallback;
+        }
+      }
+
+      function remember(key, value) {
+        try {
+          localStorage.setItem(key, value);
+        } catch {
+        }
+      }
+
+      function errorText(detail) {
+        if (typeof detail === "string") return detail;
+        if (detail) return JSON.stringify(detail);
+        return "Ocurrió un error inesperado.";
+      }
+
+      async function requestJson(url, options) {
+        const response = await fetch(url, options);
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(errorText(data.detail) || `Error HTTP ${response.status}`);
+        return data;
+      }
+
+      function updateSend() {
+        const ready =
+          state.models.length > 0 &&
+          (!state.remote || (state.wsOpen && state.agentOnline));
+        els.send.disabled = state.busy || !ready;
+      }
+
+      function failPending(message) {
+        for (const pending of state.pending.values()) {
+          clearTimeout(pending.timer);
+          pending.reject(new Error(message));
+        }
+        state.pending.clear();
+      }
+
+      function newRequestId() {
+        const fallback = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const raw =
+          window.crypto && typeof crypto.randomUUID === "function"
+            ? crypto.randomUUID()
+            : fallback;
+        return raw.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
+      }
+
+      function remoteRequest(action, payload, onEvent, timeoutMs = 60000) {
+        return new Promise((resolve, reject) => {
+          if (!state.ws || state.ws.readyState !== WebSocket.OPEN || !state.wsOpen) {
+            reject(new Error("Conecta el relay primero."));
+            return;
+          }
+          const id = newRequestId();
+          const timer = setTimeout(() => {
+            state.pending.delete(id);
+            reject(new Error("Tiempo de espera agotado para la solicitud remota."));
+          }, timeoutMs);
+          state.pending.set(id, { resolve, reject, onEvent, timer });
+          try {
+            state.ws.send(
+              JSON.stringify({ type: "request", id, action, payload })
+            );
+          } catch (error) {
+            clearTimeout(timer);
+            state.pending.delete(id);
+            reject(new Error("No se pudo enviar la solicitud al relay."));
+          }
+        });
+      }
+
+      function handleRelayData(data) {
+        if (data.type === "agent_online") {
+          state.agentOnline = true;
+          els.remoteNote.textContent = "Agente local conectado.";
+          updateSend();
+          loadStatus();
+          loadModels();
+          if (state.program === "word") refreshWordDocuments();
+          return;
+        }
+        if (data.type === "agent_offline") {
+          state.agentOnline = false;
+          failPending("El agente local se desconectó.");
+          els.remoteNote.textContent = "El agente local se desconectó.";
+          els.status.textContent = "Relay conectado; agente local sin conexión.";
+          updateSend();
+          return;
+        }
+        if (data.type === "event") {
+          const pending = data.id ? state.pending.get(data.id) : null;
+          if (pending && pending.onEvent) pending.onEvent(data.event || {});
+          return;
+        }
+        if (data.type === "error") {
+          const pending = data.id ? state.pending.get(data.id) : null;
+          if (pending) {
+            clearTimeout(pending.timer);
+            state.pending.delete(data.id);
+            pending.reject(new Error(data.error || "Error remoto."));
+          } else {
+            els.remoteNote.textContent = data.error || "Error remoto.";
+          }
+          return;
+        }
+        if (data.type === "result") {
+          const pending = data.id ? state.pending.get(data.id) : null;
+          if (!pending) return;
+          clearTimeout(pending.timer);
+          state.pending.delete(data.id);
+          if (data.ok === false) {
+            pending.reject(new Error(data.error || "Error remoto."));
+          } else {
+            pending.resolve(data.result);
+          }
+        }
+      }
+
+      function connectRelay() {
+        const url = els.relayUrl.value.trim();
+        const token = els.relayToken.value.trim();
+        if (!url || !token) {
+          els.remoteNote.textContent = "Escribe la URL del relay y el token.";
+          return;
+        }
+        remember("ia_mcp_relay_url", url);
+        if (state.ws) {
+          state.ws.onclose = null;
+          state.ws.close();
+          state.ws = null;
+        }
+        state.wsOpen = false;
+        state.agentOnline = false;
+        failPending("Conexión reemplazada.");
+        updateSend();
+
+        let socket;
+        try {
+          socket = new WebSocket(url);
+        } catch (error) {
+          els.remoteNote.textContent = "La URL del relay no es válida.";
+          return;
+        }
+        state.ws = socket;
+        state.relayCloseReason = "Desconectado. Pulsa Conectar.";
+        els.connectRelay.disabled = true;
+        els.remoteNote.textContent = "Conectando...";
+        const helloTimeout = setTimeout(() => {
+          if (!state.wsOpen && state.ws === socket) {
+            state.relayCloseReason = "El relay no respondió al saludo.";
+            socket.close();
+          }
+        }, 15000);
+
+        socket.onopen = () => {
+          socket.send(
+            JSON.stringify({ type: "hello", role: "client", token })
+          );
+        };
+        socket.onmessage = (event) => {
+          let data;
+          try {
+            data = JSON.parse(event.data);
+          } catch {
+            return;
+          }
+          if (data.type === "hello") {
+            clearTimeout(helloTimeout);
+            els.connectRelay.disabled = false;
+            if (!data.ok) {
+              state.relayCloseReason = data.error || "No autorizado.";
+              socket.close();
+              return;
+            }
+            state.wsOpen = true;
+            state.agentOnline = Boolean(data.agent_online);
+            els.remoteNote.textContent = state.agentOnline
+              ? "Relay conectado; agente local disponible."
+              : "Relay conectado; esperando al agente local.";
+            els.status.textContent = state.agentOnline
+              ? "Relay conectado. Consultando servicios..."
+              : "Relay conectado; agente local sin conexión.";
+            updateSend();
+            if (state.agentOnline) {
+              loadStatus();
+              loadModels();
+              if (state.program === "word") refreshWordDocuments();
+            }
+            return;
+          }
+          handleRelayData(data);
+        };
+        socket.onerror = () => {
+          els.remoteNote.textContent = "No se pudo conectar al relay.";
+        };
+        socket.onclose = (event) => {
+          clearTimeout(helloTimeout);
+          if (state.ws !== socket) return;
+          state.ws = null;
+          state.wsOpen = false;
+          state.agentOnline = false;
+          els.connectRelay.disabled = false;
+          failPending("Se perdió la conexión con el relay.");
+          updateSend();
+          els.remoteNote.textContent =
+            state.relayCloseReason ||
+            (event.code === 4401
+              ? "No autorizado."
+              : "Desconectado. Pulsa Conectar.");
+          state.relayCloseReason = null;
+        };
+      }
+
+      function serviceText(name, value) {
+        if (!value || !value.available) return `${name}: ${(value && value.error) || "no disponible"}`;
+        if (value.running === false) return `${name}: instalado, sin sesión abierta`;
+        return `${name}: disponible`;
+      }
+
+      async function loadStatus() {
+        try {
+          const services = state.remote
+            ? await remoteRequest("status", {})
+            : await requestJson("/api/local/status");
+          els.status.textContent = [
+            serviceText("Ollama", services.ollama),
+            serviceText("Civil 3D", services.civil3d),
+            serviceText("Word", services.word),
+          ].join(" · ");
+        } catch (error) {
+          els.status.textContent = error.message;
+        }
+      }
+
+      async function loadModels() {
+        try {
+          const models = state.remote
+            ? await remoteRequest("models.list", {})
+            : await requestJson("/api/models");
+          state.models = models;
+          const names = models
+            .map((item) => item.name || item.model)
+            .filter((name) => typeof name === "string" && name.length > 0);
+          els.model.replaceChildren();
+          if (names.length === 0) {
+            els.modelNote.textContent = "No hay modelos descargados. Escribe un nombre arriba y pulsa Descargar.";
+            updateSend();
+            return;
+          }
+          for (const name of names) {
+            const option = document.createElement("option");
+            option.value = name;
+            option.textContent = name;
+            els.model.appendChild(option);
+          }
+          const saved = stored("ia_mcp_model", "");
+          els.model.value = names.includes(saved) ? saved : names[0];
+          els.modelNote.textContent = `${names.length} modelo(s) disponibles.`;
+          updateSend();
+        } catch (error) {
+          els.modelNote.textContent = error.message;
+          updateSend();
+        }
+      }
+
+      function wordActions(message) {
+        const actions = document.createElement("div");
+        actions.className = "message-actions";
+        const append = document.createElement("button");
+        append.type = "button";
+        append.className = "ghost";
+        append.textContent = "Añadir al final de Word";
+        append.addEventListener("click", () => applyWord("append", message.content));
+        const replace = document.createElement("button");
+        replace.type = "button";
+        replace.className = "danger";
+        replace.textContent = "Reemplazar documento";
+        replace.addEventListener("click", () => applyWord("replace", message.content));
+        actions.append(append, replace);
+        return actions;
+      }
+
+      function renderMessages() {
+        els.messages.replaceChildren();
+        if (state.messages.length === 0) {
+          els.messages.appendChild(els.empty);
+          return;
+        }
+        for (const message of state.messages) {
+          const node = document.createElement("div");
+          node.className = `message ${message.role}`;
+          node.textContent = message.content;
+          if (
+            message.role === "assistant" &&
+            state.program === "word" &&
+            message.content.trim()
+          ) {
+            node.appendChild(wordActions(message));
+          }
+          els.messages.appendChild(node);
+        }
+        els.messages.scrollTop = els.messages.scrollHeight;
+      }
+
+      function addMessage(role, content) {
+        state.messages.push({ role, content });
+        renderMessages();
+      }
+
+      function showTransientError(content) {
+        const node = document.createElement("div");
+        node.className = "message error";
+        node.textContent = content;
+        els.messages.appendChild(node);
+        els.messages.scrollTop = els.messages.scrollHeight;
+      }
+
+      function setBusy(busy) {
+        state.busy = busy;
+        updateSend();
+        els.prompt.disabled = busy;
+        if (busy) {
+          const node = document.createElement("div");
+          node.className = "message pending";
+          node.id = "pending";
+          node.textContent = "Pensando...";
+          els.messages.appendChild(node);
+          els.messages.scrollTop = els.messages.scrollHeight;
+        } else {
+          const pending = document.querySelector("#pending");
+          if (pending) pending.remove();
+        }
+      }
+
+      async function sendMessage(event) {
+        event.preventDefault();
+        const content = els.prompt.value.trim();
+        if (!content || state.busy) return;
+        if (!els.model.value) {
+          showTransientError("Selecciona o instala un modelo de Ollama.");
+          return;
+        }
+        addMessage("user", content);
+        els.prompt.value = "";
+        setBusy(true);
+        try {
+          const payload = {
+            model: els.model.value,
+            messages: state.messages.slice(-40),
+            instructions: els.instructions.value,
+            context: els.context.value,
+          };
+          const result = state.remote
+            ? await remoteRequest("chat", payload, null, 300000)
+            : await requestJson("/api/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+              });
+          addMessage("assistant", result.message);
+        } catch (error) {
+          showTransientError(error.message);
+        } finally {
+          setBusy(false);
+          els.prompt.focus();
+        }
+      }
+
+      function pullProgress(name, event) {
+        if (
+          typeof event.completed === "number" &&
+          typeof event.total === "number" &&
+          event.total > 0
+        ) {
+          return `${name}: ${event.status} ${Math.round((event.completed / event.total) * 100)}%`;
+        }
+        return `${name}: ${event.status || "descargando"}`;
+      }
+
+      async function pullModel() {
+        const name = els.modelName.value.trim();
+        if (!name) return;
+        if (!/^[A-Za-z0-9._:/-]+$/.test(name)) {
+          els.pullNote.textContent = "Nombre inválido. Ejemplo: llama3.2:3b";
+          return;
+        }
+        els.pullModel.disabled = true;
+        els.pullNote.textContent = `Iniciando descarga de ${name}...`;
+        try {
+          if (state.remote) {
+            await remoteRequest(
+              "models.pull",
+              { model: name },
+              (event) => {
+                if (event.status) {
+                  els.pullNote.textContent = pullProgress(name, event);
+                }
+              },
+              1800000
+            );
+            els.pullNote.textContent = `Modelo ${name} listo.`;
+            await loadModels();
+          } else {
+            const response = await fetch("/api/models/pull", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ model: name }),
+            });
+            if (!response.ok) {
+              const data = await response.json().catch(() => ({}));
+              throw new Error(errorText(data.detail) || `Error HTTP ${response.status}`);
+            }
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+            while (true) {
+              const chunk = await reader.read();
+              if (chunk.done) break;
+              buffer += decoder.decode(chunk.value, { stream: true });
+              const lines = buffer.split("\n");
+              buffer = lines.pop() || "";
+              for (const line of lines) {
+                if (!line.trim()) continue;
+                let event;
+                try {
+                  event = JSON.parse(line);
+                } catch {
+                  continue;
+                }
+                if (event.error) throw new Error(event.error);
+                if (event.status) els.pullNote.textContent = pullProgress(name, event);
+              }
+            }
+            els.pullNote.textContent = `Modelo ${name} listo.`;
+            await loadModels();
+          }
+        } catch (error) {
+          els.pullNote.textContent = error.message;
+        } finally {
+          els.pullModel.disabled = false;
+        }
+      }
+
+      async function applyWord(mode, text) {
+        if (!text.trim()) return;
+        const action =
+          mode === "append"
+            ? "añadir este texto al final del documento"
+            : "REEMPLAZAR todo el contenido del documento";
+        const preview = text.length > 300 ? `${text.slice(0, 300)}...` : text;
+        if (!window.confirm(`¿Confirmas ${action}?\n\n${preview}`)) return;
+        try {
+          const payload = {
+            document: els.wordDoc.value || null,
+            text,
+            confirm: true,
+          };
+          const result = state.remote
+            ? await remoteRequest(
+                mode === "append" ? "word.append" : "word.replace",
+                payload,
+                null,
+                60000
+              )
+            : await requestJson(`/api/word/${mode}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+              });
+          els.wordNote.textContent =
+            `Aplicado en ${result.name}. Caracteres: ${result.characters}. ` +
+            "Guarda los cambios manualmente en Word.";
+          await loadWordText();
+        } catch (error) {
+          els.wordNote.textContent = error.message;
+        }
+      }
+
+      async function loadCivil3dContext() {
+        els.civil3dNote.textContent = "Consultando Civil 3D...";
+        els.loadCivil3d.disabled = true;
+        try {
+          const result = state.remote
+            ? await remoteRequest("civil3d.alignments", {})
+            : await requestJson("/api/civil3d/alignments");
+          els.context.value = JSON.stringify(result, null, 2);
+          els.civil3dNote.textContent =
+            "Alineamientos cargados como contexto. Solo lectura.";
+        } catch (error) {
+          els.civil3dNote.textContent = error.message;
+        } finally {
+          els.loadCivil3d.disabled = false;
+        }
+      }
+
+      function updateProgram() {
+        state.program = els.program.value;
+        els.wordPanel.classList.toggle("hidden", state.program !== "word");
+        els.civil3dPanel.classList.toggle("hidden", state.program !== "civil3d");
+        const notes = {
+          "": "Solo chat; sin contexto de programas.",
+          word: "Carga el texto de un documento y confirma cualquier edición.",
+          civil3d: "Carga alineamientos; solo lectura en esta etapa.",
+        };
+        els.programNote.textContent = notes[state.program];
+        remember("ia_mcp_program", state.program);
+        renderMessages();
+        if (state.program === "word") refreshWordDocuments();
+      }
+
+      async function refreshWordDocuments() {
+        if (state.remote && (!state.wsOpen || !state.agentOnline)) {
+          els.wordNote.textContent = "Conecta el relay y el agente local para consultar Word.";
+          return;
+        }
+        els.wordNote.textContent = "Consultando Word...";
+        try {
+          const documents = state.remote
+            ? await remoteRequest("word.documents", {})
+            : await requestJson("/api/word/documents");
+          els.wordDoc.replaceChildren();
+          const active = document.createElement("option");
+          active.value = "";
+          active.textContent = "Documento activo";
+          els.wordDoc.appendChild(active);
+          for (const item of documents) {
+            const option = document.createElement("option");
+            option.value = String(item.index);
+            option.textContent = item.name;
+            els.wordDoc.appendChild(option);
+          }
+          els.wordNote.textContent =
+            documents.length === 0
+              ? "Word está abierto pero no hay documentos cargados."
+              : `${documents.length} documento(s) abiertos.`;
+        } catch (error) {
+          els.wordNote.textContent = error.message;
+        }
+      }
+
+      async function loadWordText() {
+        els.wordNote.textContent = "Leyendo documento...";
+        els.loadWord.disabled = true;
+        try {
+          const payload = {
+            document: els.wordDoc.value || null,
+            max_chars: 50000,
+          };
+          const result = state.remote
+            ? await remoteRequest("word.read", payload)
+            : await requestJson("/api/word/read", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+              });
+          els.context.value = result.text || "";
+          els.wordNote.textContent =
+            `${result.name}: ${result.characters} caracteres` +
+            (result.truncated ? " (texto truncado a 50000)" : "");
+        } catch (error) {
+          els.wordNote.textContent = error.message;
+        } finally {
+          els.loadWord.disabled = false;
+        }
+      }
+
+      els.form.addEventListener("submit", sendMessage);
+      els.prompt.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+          els.form.requestSubmit();
+        }
+      });
+      els.model.addEventListener("change", () => remember("ia_mcp_model", els.model.value));
+      els.modelName.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          pullModel();
+        }
+      });
+      els.pullModel.addEventListener("click", pullModel);
+      els.connectRelay.addEventListener("click", connectRelay);
+      els.relayToken.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          connectRelay();
+        }
+      });
+      els.relayUrl.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          connectRelay();
+        }
+      });
+      els.program.addEventListener("change", updateProgram);
+      els.loadCivil3d.addEventListener("click", loadCivil3dContext);
+      els.instructions.addEventListener("input", () => remember("ia_mcp_instructions", els.instructions.value));
+      els.newChat.addEventListener("click", () => {
+        state.messages = [];
+        renderMessages();
+        els.prompt.focus();
+      });
+      els.refreshWord.addEventListener("click", refreshWordDocuments);
+      els.loadWord.addEventListener("click", loadWordText);
+      els.clearContext.addEventListener("click", () => {
+        els.context.value = "";
+        els.wordNote.textContent = "Contexto vacío.";
+      });
+
+      const relayScheme = location.protocol === "https:" ? "wss" : "ws";
+      els.relayUrl.value = stored(
+        "ia_mcp_relay_url",
+        `${relayScheme}://${location.host}/ws/client`
+      );
+      if (state.remote) {
+        els.remotePanel.classList.remove("hidden");
+        els.status.textContent = "Relay sin conectar.";
+        els.remoteNote.textContent =
+          "Conecta el relay con el token de acceso para usar tu PC.";
+      }
+      els.instructions.value = stored("ia_mcp_instructions", "");
+      els.program.value = stored("ia_mcp_program", "");
+      updateProgram();
+      updateSend();
+      if (!state.remote) {
+        loadModels();
+        loadStatus();
+      }
+    </script>
+  </body>
+</html>
