@@ -176,7 +176,7 @@ terceros. Pasos:
    ```
 
 2. En Render, elige **New > Blueprint**, conecta el repositorio y aplica `render.yaml`.
-3. Render pedira dos variables. Genera dos secretos diferentes (32+ caracteres) y asigna:
+3. Render generara dos secretos distintos. Copia sus valores desde **Environment**:
    - `IA_MCP_AGENT_TOKEN`: lo usara el agente en tu PC.
    - `IA_MCP_RELAY_CLIENT_TOKEN`: lo usara el navegador.
 4. Cuando termine el despliegue, abre `https://TU-SERVICIO.onrender.com/remote`, conecta con

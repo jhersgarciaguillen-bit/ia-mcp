@@ -8,6 +8,6 @@ services:
     autoDeploy: true
     envVars:
       - key: IA_MCP_AGENT_TOKEN
-        sync: false
+        generateValue: true
       - key: IA_MCP_RELAY_CLIENT_TOKEN
-        sync: false
+        generateValue: true
